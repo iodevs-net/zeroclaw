@@ -285,6 +285,7 @@ fn build_agent_with(
         .memory(make_memory())
         .observer(make_observer())
         .tool_dispatcher(dispatcher)
+        .model_name("test-model".into())
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()
@@ -302,6 +303,7 @@ fn build_agent_with_memory(
         .memory(mem)
         .observer(make_observer())
         .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .model_name("test-model".into())
         .workspace_dir(std::env::temp_dir())
         .auto_save(auto_save)
         .build()
@@ -319,6 +321,7 @@ fn build_agent_with_config(
         .memory(make_memory())
         .observer(make_observer())
         .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .model_name("test-model".into())
         .workspace_dir(std::env::temp_dir())
         .config(config)
         .build()
@@ -1326,17 +1329,17 @@ async fn clear_history_resets_conversation() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 25. run_single delegates to turn
+// 25. turn returns text response
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-async fn run_single_delegates_to_turn() {
-    let provider = Box::new(ScriptedProvider::new(vec![text_response("via run_single")]));
+async fn turn_returns_text_response() {
+    let provider = Box::new(ScriptedProvider::new(vec![text_response("hello from turn")]));
     let mut agent = build_agent_with(provider, vec![], Box::new(NativeToolDispatcher));
 
-    let response = agent.run_single("test").await.unwrap();
+    let response = agent.turn("hello").await.unwrap();
     assert!(
         !response.is_empty(),
-        "Expected non-empty response from run_single"
+        "Expected non-empty response from turn"
     );
 }

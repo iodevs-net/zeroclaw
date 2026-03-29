@@ -502,6 +502,11 @@ impl Agent {
         self.history = messages;
     }
 
+    /// Clear the conversation history.
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
+
     pub async fn reflect(&self) -> Result<String> {
         if let Some(ref engine) = self.reflection_engine {
             let history = self
