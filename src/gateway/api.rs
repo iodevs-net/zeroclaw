@@ -787,6 +787,189 @@ pub async fn handle_api_health(
     Json(serde_json::json!({"health": snapshot})).into_response()
 }
 
+// ── VI Credential Verification ─────────────────────────────────
+
+/// Verification result returned by the VI verification endpoint.
+#[derive(serde::Serialize)]
+struct ViVerificationResponse {
+    verified: bool,
+    credential_id: String,
+    error: Option<String>,
+    credential: Option<serde_json::Value>,
+}
+
+/// GET /api/vi/verify/:id — verify a VI credential by ID.
+///
+/// Returns JSON with:
+/// - `verified`: true if HMAC proof is valid
+/// - `credential_id`: the credential ID
+/// - `error`: error message if verification failed
+/// - `credential`: full credential JSON if verified
+pub async fn handle_api_vi_verify(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(credential_id): Path<String>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+
+    // Open the VI credentials store — must use the same path as the hook
+    // (config_path.parent() = ~/.zeroclaw/, not workspace_dir = ~/.zeroclaw/workspace/)
+    let zeroclaw_dir = config.config_path.parent().unwrap_or(&config.workspace_dir);
+    let store = match crate::agent::vi_issuer::ViCredentialStore::open(zeroclaw_dir) {
+        Ok(s) => s,
+        Err(e) => {
+            return Json(serde_json::json!({
+                "verified": false,
+                "credential_id": credential_id,
+                "error": format!("Failed to open credential store: {}", e),
+            }))
+            .into_response()
+        }
+    };
+
+    // Look up the credential
+    let cred: crate::agent::vi_issuer::ViCredential = match store.get_by_id(&credential_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            return Json(serde_json::json!({
+                "verified": false,
+                "credential_id": credential_id,
+                "error": "Credential not found",
+            }))
+            .into_response()
+        }
+        Err(e) => {
+            return Json(serde_json::json!({
+                "verified": false,
+                "credential_id": credential_id,
+                "error": format!("Failed to load credential: {}", e),
+            }))
+            .into_response()
+        }
+    };
+
+    // Verify HMAC proof
+    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .ok()
+        .map(|k| hex::decode(&k).ok())
+        .flatten()
+        .unwrap_or_else(Vec::new);
+
+    if signing_key.len() != 32 {
+        return Json(serde_json::json!({
+            "verified": false,
+            "credential_id": credential_id,
+            "error": "ZEROCLAW_AUDIT_SIGNING_KEY not set or invalid (must be 64 hex chars = 32 bytes)",
+        }))
+        .into_response();
+    }
+
+    // Re-compute HMAC and compare
+    let subject_json = match serde_json::to_string(&cred.credential_subject) {
+        Ok(j) => j,
+        Err(e) => {
+            return Json(serde_json::json!({
+                "verified": false,
+                "credential_id": credential_id,
+                "error": format!("Failed to serialize subject: {}", e),
+            }))
+            .into_response()
+        }
+    };
+
+    let proof_value = cred
+        .proof
+        .proof_value
+        .strip_prefix("hmac-sha256:")
+        .unwrap_or(&cred.proof.proof_value);
+
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(&signing_key)
+        .map_err(|_| "HMAC key error")
+        .unwrap();
+    mac.update(subject_json.as_bytes());
+    let expected = hex::encode(mac.finalize().into_bytes());
+
+    let verified = proof_value == expected;
+    let error = if verified {
+        None
+    } else {
+        Some("HMAC signature mismatch".to_string())
+    };
+
+    let response = ViVerificationResponse {
+        verified,
+        credential_id: credential_id.clone(),
+        error,
+        credential: if verified {
+            Some(serde_json::to_value(&cred).unwrap_or_default())
+        } else {
+            None
+        },
+    };
+
+    Json(response).into_response()
+}
+
+/// GET /api/vi/credentials — list recent VI credentials
+pub async fn handle_api_vi_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<ViListQuery>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+
+    // Open the VI credentials store — must use the same path as the hook
+    let zeroclaw_dir = config.config_path.parent().unwrap_or(&config.workspace_dir);
+    let store = match crate::agent::vi_issuer::ViCredentialStore::open(zeroclaw_dir) {
+        Ok(s) => s,
+        Err(e) => {
+            return Json(serde_json::json!({
+                "error": format!("Failed to open credential store: {}", e),
+            }))
+            .into_response()
+        }
+    };
+
+    let limit = params.limit.unwrap_or(20).min(100);
+    let creds = match params.tool.as_deref() {
+        Some(t) => store.list_by_tool(t, limit),
+        None => match params.channel.as_deref() {
+            Some(c) => store.list_by_channel(c, limit),
+            None => store.list_recent(limit),
+        },
+    };
+
+    match creds {
+        Ok(creds) => Json(serde_json::json!({
+            "credentials": creds,
+            "count": creds.len(),
+        }))
+        .into_response(),
+        Err(e) => Json(serde_json::json!({
+            "error": format!("Failed to list credentials: {}", e),
+        }))
+        .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ViListQuery {
+    pub tool: Option<String>,
+    pub channel: Option<String>,
+    pub limit: Option<usize>,
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 fn is_masked_secret(value: &str) -> bool {

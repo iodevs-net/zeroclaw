@@ -986,7 +986,10 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .route(
             "/api/canvas/{id}/history",
             get(canvas::handle_canvas_history),
-        );
+        )
+        // ── VI Credential verification API ──
+        .route("/api/vi/verify/{id}", get(api::handle_api_vi_verify))
+        .route("/api/vi/credentials", get(api::handle_api_vi_list));
 
     // ── WebAuthn hardware key authentication API (requires webauthn feature) ──
     #[cfg(feature = "webauthn")]
