@@ -970,6 +970,63 @@ pub struct ViListQuery {
     pub limit: Option<usize>,
 }
 
+// ── DID Resolution ───────────────────────────────────────────────
+
+/// GET /api/did/:id — resolve a DID to its DID Document.
+///
+/// Supports `did:zeroclaw:zara/<version>` DIDs.
+/// Returns JSON DID Document conforming to W3C DID Core 1.0.
+pub async fn handle_api_did_resolve(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(did): Path<String>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    // Get the signing key from environment
+    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .ok()
+        .map(|k| hex::decode(&k).ok())
+        .flatten()
+        .unwrap_or_else(Vec::new);
+
+    if signing_key.is_empty() {
+        return Json(serde_json::json!({
+            "error": "DID resolution requires ZEROCLAW_AUDIT_SIGNING_KEY to be set",
+        }))
+        .into_response();
+    }
+
+    // Get agent version from config or default
+    let version = env!("CARGO_PKG_VERSION");
+
+    let resolver = crate::agent::did::DIDResolver::new(version.to_string(), signing_key);
+
+    match resolver.resolve(&did) {
+        Ok(doc) => Json(serde_json::json!({
+            "did": did,
+            "document": doc,
+            "resolution_metadata": {
+                "content_type": "application/did+json",
+            }
+        }))
+        .into_response(),
+        Err(e) => {
+            let status = match e {
+                crate::agent::did::DIDError::InvalidDID(_) => StatusCode::BAD_REQUEST,
+                crate::agent::did::DIDError::UnsupportedMethod(_) => StatusCode::BAD_REQUEST,
+                crate::agent::did::DIDError::NotFound(_) => StatusCode::NOT_FOUND,
+                crate::agent::did::DIDError::VerificationFailed(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            };
+            (status, Json(serde_json::json!({"error": e.to_string()}))).into_response()
+        }
+    }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 fn is_masked_secret(value: &str) -> bool {

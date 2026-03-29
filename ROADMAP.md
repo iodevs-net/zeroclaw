@@ -33,7 +33,7 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 - [x] **VI Credential Store SQLite:** `ViCredentialStore` con conexión `rusqlite` envuelta en `Mutex`. Tabla `vi_credentials` con índices. Persistencia en `~/.zeroclaw/vi_credentials.db`. Thread-safe.
 - [x] **Endpoints REST VI:** `GET /api/vi/verify/:id` y `GET /api/vi/credentials` con auth bearer. Verificación HMAC-SHA256 de proof. Filtros por tool, channel y limit.
 - [x] **Tests Live VI Credential:** Sistema funcionando en daemon real. 2 credenciales emitidas para `web_search_tool` y `web_fetch` tras interacción real via Telegram. Verificación `verified: true`.
-- [ ] **DID Document y Resolutor:** Documento W3C DID para la identidad del agente (`did:zeroclaw:zara/0.6.5`). Resolver para verificación off-chain de credentials.
+- [x] **DID Document y Resolutor:** `src/agent/did.rs` con `DIDResolver` y `DIDDocument`. Soporta `did:zeroclaw:zara/<version>`. Endpoint `GET /api/did/:id` para resolución off-chain.
 - [ ] **Activación Code Context (Embedded):** Indexación semántica del codebase usando syn + BM25 embedded (alternativa a Milvus, alignment con philosophy low-memory).
 
 ## 📅 Fase IV: Optimización Multi-Modelo y UI (Pendiente)

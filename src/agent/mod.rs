@@ -18,6 +18,7 @@ pub mod reflection;
 pub mod thinking;
 pub mod tool_execution;
 pub mod tool_search;
+pub mod did;
 pub mod vi_issuer;
 
 #[cfg(test)]

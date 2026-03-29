@@ -989,7 +989,9 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         )
         // ── VI Credential verification API ──
         .route("/api/vi/verify/{id}", get(api::handle_api_vi_verify))
-        .route("/api/vi/credentials", get(api::handle_api_vi_list));
+        .route("/api/vi/credentials", get(api::handle_api_vi_list))
+        // ── DID resolution API ──
+        .route("/api/did/{id}", get(api::handle_api_did_resolve));
 
     // ── WebAuthn hardware key authentication API (requires webauthn feature) ──
     #[cfg(feature = "webauthn")]
