@@ -5065,8 +5065,9 @@ pub async fn start_channels(config: Config) -> Result<()> {
         config.api_key.as_deref(),
         &config,
         None,
-    );
-
+        None,
+        None,
+        );
     // Wire MCP tools into the registry before freezing — non-fatal.
     // When `deferred_loading` is enabled, MCP tools are NOT added eagerly.
     // Instead, a `tool_search` built-in is registered for on-demand loading.
