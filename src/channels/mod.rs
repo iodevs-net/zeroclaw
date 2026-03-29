@@ -2833,7 +2833,7 @@ async fn process_channel_message(
     let notify_channel = target_channel.clone();
     let notify_reply_target = msg.reply_target.clone();
     let notify_thread_root = followup_thread_id(&msg);
-    let notify_task = if msg.channel == "cli" || !ctx.show_tool_calls {
+    let notify_task = if msg.channel == "cli" || msg.channel == "telegram" || !ctx.show_tool_calls {
         Some(tokio::spawn(async move {
             while notify_rx.recv().await.is_some() {}
         }))
