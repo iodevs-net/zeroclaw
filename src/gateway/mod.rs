@@ -472,6 +472,8 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         config.api_key.as_deref(),
         &config,
         Some(canvas_store.clone()),
+        None,
+        None,
     );
 
     // ── Wire MCP tools into the gateway tool registry (non-fatal) ───

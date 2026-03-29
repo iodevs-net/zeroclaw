@@ -197,7 +197,12 @@ async fn handle_socket(
         let messages = backend.load(&session_key);
         if !messages.is_empty() {
             message_count = messages.len();
-            agent.seed_history(&messages);
+            agent.seed_history(
+                messages
+                    .into_iter()
+                    .map(crate::providers::ConversationMessage::Chat)
+                    .collect(),
+            );
             resumed = true;
         }
         // Set session name if provided (non-empty) on connect
