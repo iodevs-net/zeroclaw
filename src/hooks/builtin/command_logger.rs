@@ -3,23 +3,52 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::hooks::traits::HookHandler;
+use crate::security::audit::{AuditLogger, CommandExecutionLog};
+use crate::tools::compute_result_hash;
 use crate::tools::traits::ToolResult;
 
 /// Logs tool calls for auditing.
+///
+/// Logs to both:
+/// - A volatile in-memory log (for runtime inspection)
+/// - The persistent Merkle-hash chained audit log (via `AuditLogger`)
 pub struct CommandLoggerHook {
     log: Arc<Mutex<Vec<String>>>,
+    audit: Option<AuditLogger>,
+    channel: String,
 }
 
 impl CommandLoggerHook {
-    pub fn new() -> Self {
+    /// Create a new hook with optional audit logging.
+    ///
+    /// `zeroclaw_dir` is the ZeroClaw config directory (typically `~/.zeroclaw`).
+    /// `channel` is the messaging channel name (e.g. "cli", "telegram").
+    pub fn new(
+        audit_config: crate::config::AuditConfig,
+        zeroclaw_dir: std::path::PathBuf,
+        channel: String,
+    ) -> Self {
+        let audit = AuditLogger::new(audit_config, zeroclaw_dir).ok();
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
+            audit,
+            channel,
         }
     }
 
     #[cfg(test)]
     pub fn entries(&self) -> Vec<String> {
         self.log.lock().unwrap().clone()
+    }
+}
+
+impl Default for CommandLoggerHook {
+    fn default() -> Self {
+        Self {
+            log: Arc::new(Mutex::new(Vec::new())),
+            audit: None,
+            channel: "cli".to_string(),
+        }
     }
 }
 
@@ -43,6 +72,26 @@ impl HookHandler for CommandLoggerHook {
         );
         tracing::info!(hook = "command-logger", "{}", entry);
         self.log.lock().unwrap().push(entry);
+
+        // Log to the persistent Merkle audit trail
+        if let Some(ref audit) = self.audit {
+            let result_hash =
+                compute_result_hash(result.success, &result.output, result.error.as_deref());
+            let log_entry = CommandExecutionLog {
+                channel: &self.channel,
+                command: tool,
+                risk_level: "medium", // TODO: pull from SecurityPolicy per-tool risk assessment
+                approved: true,       // already approved before execution
+                allowed: true,        // already allowed by policy
+                success: result.success,
+                duration_ms: duration.as_millis() as u64,
+            };
+            if let Err(e) = audit.log_command_event(log_entry) {
+                tracing::warn!(hook = "command-logger", "audit log failed: {e}");
+            }
+            // Also log the result_hash for closed-loop verification
+            tracing::debug!(hook = "command-logger", tool, result_hash, "tool execution logged");
+        }
     }
 }
 
@@ -52,7 +101,8 @@ mod tests {
 
     #[tokio::test]
     async fn logs_tool_calls() {
-        let hook = CommandLoggerHook::new();
+        // Default hook has no audit logger configured (audit is optional)
+        let hook = CommandLoggerHook::default();
         let result = ToolResult {
             success: true,
             output: "ok".into(),

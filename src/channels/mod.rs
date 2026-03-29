@@ -5436,7 +5436,21 @@ pub async fn start_channels(config: Config) -> Result<()> {
         hooks: if config.hooks.enabled {
             let mut runner = crate::hooks::HookRunner::new();
             if config.hooks.builtin.command_logger {
-                runner.register(Box::new(crate::hooks::builtin::CommandLoggerHook::new()));
+                let zeroclaw_dir = config
+                    .config_path
+                    .parent()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        std::path::PathBuf::from(
+                            std::env::var("ZEROCLAW_DIR").unwrap_or_else(|_| "~/.zeroclaw".into()),
+                        )
+                    });
+                let hook = crate::hooks::builtin::CommandLoggerHook::new(
+                    config.security.audit.clone(),
+                    zeroclaw_dir,
+                    "channel".to_string(),
+                );
+                runner.register(Box::new(hook));
             }
             if config.hooks.builtin.webhook_audit.enabled {
                 runner.register(Box::new(crate::hooks::builtin::WebhookAuditHook::new(

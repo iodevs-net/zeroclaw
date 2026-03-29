@@ -391,11 +391,33 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     let config_state = Arc::new(Mutex::new(config.clone()));
 
     // ── Hooks ──────────────────────────────────────────────────────
-    let hooks: Option<std::sync::Arc<crate::hooks::HookRunner>> = if config.hooks.enabled {
-        Some(std::sync::Arc::new(crate::hooks::HookRunner::new()))
-    } else {
-        None
-    };
+    let hooks: Option<std::sync::Arc<crate::hooks::HookRunner>> =
+        if config.hooks.enabled {
+            let mut runner = crate::hooks::HookRunner::new();
+
+            // Register built-in command-logger hook (audit trail + in-memory log)
+            if config.hooks.builtin.command_logger {
+                let zeroclaw_dir = config
+                    .config_path
+                    .parent()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        std::path::PathBuf::from(
+                            std::env::var("ZEROCLAW_DIR").unwrap_or_else(|_| "~/.zeroclaw".into()),
+                        )
+                    });
+                let hook = crate::hooks::builtin::CommandLoggerHook::new(
+                    config.security.audit.clone(),
+                    zeroclaw_dir,
+                    "cli".to_string(),
+                );
+                runner.register(Box::new(hook));
+            }
+
+            Some(std::sync::Arc::new(runner))
+        } else {
+            None
+        };
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
