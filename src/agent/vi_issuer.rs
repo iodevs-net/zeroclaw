@@ -30,8 +30,10 @@
 //! ```
 
 use crate::security::audit::AuditLogger;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -259,6 +261,173 @@ impl ViIssuer {
     /// Serialize a credential to JSON string.
     pub fn credential_to_json(&self, cred: &ViCredential) -> String {
         serde_json::to_string_pretty(cred).unwrap_or_default()
+    }
+}
+
+// ── Credential Store ──────────────────────────────────────────────────────────
+
+/// Path inside ZeroClaw dir where the VI credentials DB is stored.
+const VI_CREDENTIALS_DB: &str = "vi_credentials.db";
+
+/// Persistent SQLite store for VI credentials.
+///
+/// Credentials are persisted to `~/.zeroclaw/vi_credentials.db` so they
+/// survive daemon restarts and can be queried by external verifiers.
+/// The connection is wrapped in a `Mutex` for thread safety.
+pub struct ViCredentialStore {
+    conn: std::sync::Mutex<Connection>,
+}
+
+impl ViCredentialStore {
+    /// Open (or create) the credentials DB at `zeroclaw_dir/vi_credentials.db`.
+    pub fn open(zeroclaw_dir: &std::path::Path) -> anyhow::Result<Self> {
+        std::fs::create_dir_all(zeroclaw_dir)
+            .with_context(|| format!("Failed to create zeroclaw dir: {}", zeroclaw_dir.display()))?;
+        let db_path = zeroclaw_dir.join(VI_CREDENTIALS_DB);
+        let conn = Connection::open(&db_path)
+            .with_context(|| format!("Failed to open VI credentials DB: {}", db_path.display()))?;
+        let store = Self { conn: std::sync::Mutex::new(conn) };
+        store.init_schema()?;
+        Ok(store)
+    }
+
+    /// Create an in-memory store (useful for testing).
+    #[cfg(test)]
+    pub fn in_memory() -> anyhow::Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let store = Self { conn: std::sync::Mutex::new(conn) };
+        store.init_schema()?;
+        Ok(store)
+    }
+
+    fn init_schema(&self) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS vi_credentials (
+                id              TEXT PRIMARY KEY,
+                issuer          TEXT NOT NULL,
+                tool_name       TEXT NOT NULL,
+                result_hash     TEXT NOT NULL,
+                audit_chain_hash TEXT NOT NULL,
+                success         INTEGER NOT NULL,
+                output_digest   TEXT NOT NULL,
+                channel         TEXT NOT NULL,
+                issued_at       TEXT NOT NULL,
+                proof_value     TEXT NOT NULL,
+                proof_type      TEXT NOT NULL,
+                verification_method TEXT NOT NULL,
+                full_json       TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_vi_tool ON vi_credentials(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_vi_channel ON vi_credentials(channel);
+            CREATE INDEX IF NOT EXISTS idx_vi_issued ON vi_credentials(issued_at);",
+        )?;
+        Ok(())
+    }
+
+    /// Persist a credential to the store.
+    pub fn save(&self, cred: &ViCredential) -> anyhow::Result<()> {
+        let issued_at = cred.issuance_date.to_rfc3339();
+        let full_json = serde_json::to_string(cred)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO vi_credentials
+             (id, issuer, tool_name, result_hash, audit_chain_hash, success,
+              output_digest, channel, issued_at, proof_value, proof_type,
+              verification_method, full_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                cred.id,
+                cred.issuer,
+                cred.credential_subject.tool_name,
+                cred.credential_subject.result_hash,
+                cred.credential_subject.audit_chain_hash,
+                cred.credential_subject.success as i32,
+                cred.credential_subject.output_digest,
+                cred.credential_subject.channel,
+                issued_at,
+                cred.proof.proof_value,
+                cred.proof.proof_type,
+                cred.proof.verification_method,
+                full_json,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Retrieve a credential by its ID.
+    pub fn get_by_id(&self, id: &str) -> anyhow::Result<Option<ViCredential>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT full_json FROM vi_credentials WHERE id = ?1")?;
+        let mut rows = stmt.query(params![id])?;
+        if let Some(row) = rows.next()? {
+            let json: String = row.get(0)?;
+            let cred: ViCredential = serde_json::from_str(&json)
+                .with_context(|| format!("Failed to deserialize credential: {}", &json[..json.len().min(100)]))?;
+            Ok(Some(cred))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// List credentials for a specific tool, most recent first.
+    pub fn list_by_tool(&self, tool_name: &str, limit: usize) -> anyhow::Result<Vec<ViCredential>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT full_json FROM vi_credentials
+             WHERE tool_name = ?1
+             ORDER BY issued_at DESC
+             LIMIT ?2",
+        )?;
+        let mut rows = stmt.query(params![tool_name, limit as i64])?;
+        let mut creds = Vec::new();
+        while let Some(row) = rows.next()? {
+            let json: String = row.get(0)?;
+            creds.push(serde_json::from_str(&json)?);
+        }
+        Ok(creds)
+    }
+
+    /// List credentials for a specific channel, most recent first.
+    pub fn list_by_channel(&self, channel: &str, limit: usize) -> anyhow::Result<Vec<ViCredential>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT full_json FROM vi_credentials
+             WHERE channel = ?1
+             ORDER BY issued_at DESC
+             LIMIT ?2",
+        )?;
+        let mut rows = stmt.query(params![channel, limit as i64])?;
+        let mut creds = Vec::new();
+        while let Some(row) = rows.next()? {
+            let json: String = row.get(0)?;
+            creds.push(serde_json::from_str(&json)?);
+        }
+        Ok(creds)
+    }
+
+    /// List the most recent credentials across all tools/channels.
+    pub fn list_recent(&self, limit: usize) -> anyhow::Result<Vec<ViCredential>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT full_json FROM vi_credentials
+             ORDER BY issued_at DESC
+             LIMIT ?1",
+        )?;
+        let mut rows = stmt.query(params![limit as i64])?;
+        let mut creds = Vec::new();
+        while let Some(row) = rows.next()? {
+            let json: String = row.get(0)?;
+            creds.push(serde_json::from_str(&json)?);
+        }
+        Ok(creds)
+    }
+
+    /// Total credential count.
+    pub fn count(&self) -> anyhow::Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM vi_credentials", [], |r| r.get(0))?;
+        Ok(n as usize)
     }
 }
 
