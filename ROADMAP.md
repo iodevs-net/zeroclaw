@@ -27,9 +27,10 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 - [x] **Integración AuditLogger en CommandLoggerHook:** Cada ejecución de tool ahora escribe al audit log con `result_hash`, channel, tool name, success y duration. Gateway y Channels registran el hook automáticamente.
 - [x] **Result Hash en ToolExecutionOutcome:** `SHA-256(output ‖ error ‖ success)` calculado en cada tool execution. Disponible para auditoría y verificación.
 - [x] **Closed-Loop Verifier Module:** `src/agent/closed_loop_verifier.rs` — infraestructura de verificación VI credential y write verification. `verify_result_hash()`, `verify_file_write()` implementados con tests.
+- [x] **Closed-Loop Verification para Writes:** `verify_write_operation()` integrado en `run_tool_call_loop`. Verificación automática post-ejecución de `file_write` y `shell`. advisory-only (warnings).
+- [x] **Tests de Integración con API Real:** `load_api_key_for_tests()` y binary `decrypt-key` permiten tests con API MiniMax real (no mocks). 4 tests live pasan.
 - [ ] **Integración VI Issuance:** El issuance de credentials VI aún no está conectado al flujo del agente. La verificación closed-loop espera credentials externos.
 - [ ] **Activación de Code Context (Milvus):** Indexar el codebase local para navegación semántica de símbolos Rust. Settings准备好了 en `~/.gemini/settings.json` — pendiente ejecutar indexación.
-- [ ] **Closed-Loop Verification para Writes:** `verify_file_write()` listo. Requiere integración en el loop del agente para llamarlo automáticamente post-ejecución de `file_write`.
 
 ## 📅 Fase IV: Optimización Multi-Modelo y UI (Pendiente)
 - [ ] **Chain of Thought Routing:** Implementar en `classifier.rs` el enrutamiento para que modelos ligeros (Haiku) validen planes y modelos "Senior" (Sonnet/GPT4) ejecuten lógica compleja.
