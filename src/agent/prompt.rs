@@ -13,7 +13,7 @@ use std::path::Path;
 pub struct PromptContext<'a> {
     pub workspace_dir: &'a Path,
     pub model_name: &'a str,
-    pub tools: &'a [Box<dyn Tool>],
+    pub tools: Vec<&'a dyn Tool>,
     pub skills: &'a [Skill],
     pub skills_prompt_mode: crate::config::SkillsPromptInjectionMode,
     pub identity_config: Option<&'a IdentityConfig>,
@@ -146,7 +146,7 @@ impl PromptSection for ToolsSection {
 
     fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         let mut out = String::from("## Tools\n\n");
-        for tool in ctx.tools {
+        for tool in &ctx.tools {
             let desc = ctx
                 .tool_descriptions
                 .and_then(|td: &ToolDescriptions| td.get(tool.name()))
@@ -351,7 +351,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: &workspace,
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: Some(&identity_config),
@@ -382,7 +382,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -420,7 +420,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &skills,
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -462,7 +462,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp/workspace"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &skills,
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Compact,
             identity_config: None,
@@ -490,7 +490,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -531,7 +531,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp/workspace"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &skills,
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -565,7 +565,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -600,7 +600,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -627,7 +627,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
@@ -662,7 +662,7 @@ mod tests {
         let ctx = PromptContext {
             workspace_dir: Path::new("/tmp"),
             model_name: "test-model",
-            tools: &tools,
+            tools: tools.iter().map(|t| t.as_ref()).collect(),
             skills: &[],
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,

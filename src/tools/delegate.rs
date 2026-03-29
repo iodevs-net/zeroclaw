@@ -1020,7 +1020,7 @@ impl DelegateTool {
         let ctx = PromptContext {
             workspace_dir,
             model_name: &agent_config.model,
-            tools: sub_tools,
+            tools: sub_tools.iter().map(|t| t.as_ref()).collect(),
             skills: &skills,
             skills_prompt_mode: crate::config::SkillsPromptInjectionMode::Full,
             identity_config: None,
