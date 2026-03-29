@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
+pub mod sentinel;
+
 const STATUS_FLUSH_SECONDS: u64 = 5;
 
 /// Wait for shutdown signal (SIGINT or SIGTERM).
@@ -122,6 +124,21 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     } else {
         crate::health::mark_component_ok("scheduler");
         tracing::info!("Cron disabled; scheduler supervisor not started");
+    }
+
+    if config.peripherals.enabled {
+        let sentinel_cfg = config.clone();
+        handles.push(spawn_component_supervisor(
+            "sentinel",
+            initial_backoff,
+            max_backoff,
+            move || {
+                let cfg = sentinel_cfg.clone();
+                async move { Box::pin(sentinel::run(cfg)).await }
+            },
+        ));
+    } else {
+        crate::health::mark_component_ok("sentinel");
     }
 
     println!("🧠 ZeroClaw daemon started");
