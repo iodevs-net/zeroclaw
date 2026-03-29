@@ -115,11 +115,11 @@ pub fn should_skip_autosave_content(content: &str) -> bool {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct ResolvedEmbeddingConfig {
-    provider: String,
-    model: String,
-    dimensions: usize,
-    api_key: Option<String>,
+pub struct ResolvedEmbeddingConfig {
+    pub provider: String,
+    pub model: String,
+    pub dimensions: usize,
+    pub api_key: Option<String>,
 }
 
 impl std::fmt::Debug for ResolvedEmbeddingConfig {
@@ -148,7 +148,7 @@ fn embedding_provider_env_key(provider: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-fn resolve_embedding_config(
+pub fn resolve_embedding_config(
     config: &MemoryConfig,
     embedding_routes: &[EmbeddingRouteConfig],
     api_key: Option<&str>,
