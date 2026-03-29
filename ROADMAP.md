@@ -30,7 +30,10 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 - [x] **Closed-Loop Verification para Writes:** `verify_write_operation()` integrado en `run_tool_call_loop`. Verificación automática post-ejecución de `file_write` y `shell`. advisory-only (warnings).
 - [x] **Tests de Integración con API Real:** `load_api_key_for_tests()` y binary `decrypt-key` permiten tests con API MiniMax real (no mocks). 4 tests live pasan.
 - [x] **Integración VI Issuance:** `src/agent/vi_issuer.rs` implementa issuance W3C VC 1.1 con HMAC-SHA256 proof. `ViCredentialHook` integrado en canal para issuance automático post-tool execution. `AuditLogger::get_last_entry_hash()` expuesto para anchoring.
-- [ ] **Tests Live VI Credential:** Tests `e2e_live_minimax_vi_credential_issuance` y `e2e_live_minimax_vi_credential_full_verification` requieren API key en config.
+- [x] **VI Credential Store SQLite:** `ViCredentialStore` con conexión `rusqlite` envuelta en `Mutex`. Tabla `vi_credentials` con índices. Persistencia en `~/.zeroclaw/vi_credentials.db`. Thread-safe.
+- [x] **Endpoints REST VI:** `GET /api/vi/verify/:id` y `GET /api/vi/credentials` con auth bearer. Verificación HMAC-SHA256 de proof. Filtros por tool, channel y limit.
+- [x] **Tests Live VI Credential:** Sistema funcionando en daemon real. 2 credenciales emitidas para `web_search_tool` y `web_fetch` tras interacción real via Telegram. Verificación `verified: true`.
+- [ ] **DID Document y Resolutor:** Documento W3C DID para la identidad del agente (`did:zeroclaw:zara/0.6.5`). Resolver para verificación off-chain de credentials.
 - [ ] **Activación Code Context (Embedded):** Indexación semántica del codebase usando syn + BM25 embedded (alternativa a Milvus, alignment con philosophy low-memory).
 
 ## 📅 Fase IV: Optimización Multi-Modelo y UI (Pendiente)
