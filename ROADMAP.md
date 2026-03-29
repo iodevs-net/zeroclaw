@@ -5,7 +5,7 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 
 ---
 
-## ✅ Fase I: Cimiento Cognitivo (Completada)
+## ✅ Fase I: Cimiento Cognitivo (Completada — Marzo 2026)
 *Implementación de la infraestructura de razonamiento y aprendizaje.*
 
 - [x] **Búsqueda Semántica de Herramientas:** Implementado `SemanticToolSearch` en `src/agent/tool_search.rs`. Zara ahora selecciona dinámicamente las ~20 herramientas más relevantes para reducir el ruido en el contexto.
@@ -13,25 +13,31 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 - [x] **Refactorización de Memoria:** Todo el sistema de proveedores migrado a `Arc<dyn Provider>` para permitir concurrencia segura entre razonamiento y reflexión.
 - [x] **Identidad Persistente:** Verificación y estabilización de la carga de `SOUL.md` e `IDENTITY.md`.
 
-## ✅ Fase II: Operaciones Globales y Hardware (Completada)
+## ✅ Fase II: Operaciones Globales y Hardware (Completada — Marzo 2026)
 *Extensión de capacidades funcionales y monitoreo físico.*
 
 - [x] **DocSyncTool:** Creada herramienta en `src/tools/doc_sync.rs` para sincronizar automáticamente el README a los 30+ idiomas soportados usando LLMs.
 - [x] **Hardware Sentinel:** Implementado proceso de fondo en `src/daemon/sentinel.rs` que monitorea el latido (heartbeat) de periféricos ESP32/STM32.
 - [x] **Estabilización de Firmas:** Corregidas todas las firmas de `all_tools` y el motor del agente en el Gateway, CLI y Canales para asegurar estabilidad absoluta.
 
-## 🚧 Fase III: Inteligencia de Navegación y Auditoría (Siguiente)
+## 🚧 Fase III: Inteligencia de Navegación y Auditoría (En Progreso)
 *Mejora de la visión interna y seguridad de ejecución.*
 
-- [ ] **Activación de Code Context (Milvus):** (Settings actualizados en `~/.gemini/settings.json`). Siguiente paso: Indexar el codebase local para navegación semántica de símbolos Rust.
-- [ ] **Auditoría de Bucle Cerrado (Closed-Loop Auditing):**
-    - [ ] Vincular el hachís del `ToolResult` con la intención firmada en `verifiable_intent`.
-    - [ ] Crear un rastro de auditoría inmutable en `src/security/audit.rs`.
-- [ ] **Closed-Loop Verification:** Asegurar que los cambios realizados por herramientas de escritura sean verificados criptográficamente antes de darlos por concluidos.
+- [x] **Auditoría Merkle Chain:** Implementado `src/security/audit.rs` con hash chain SHA-256 para trail inmutable. Genesis block, eventos de auditoría, encadenamiento criptográfico.
+- [x] **Integración AuditLogger en CommandLoggerHook:** Cada ejecución de tool ahora escribe al audit log con `result_hash`, channel, tool name, success y duration. Gateway y Channels registran el hook automáticamente.
+- [x] **Result Hash en ToolExecutionOutcome:** `SHA-256(output ‖ error ‖ success)` calculado en cada tool execution. Disponible para auditoría y verificación.
+- [x] **Closed-Loop Verifier Module:** `src/agent/closed_loop_verifier.rs` — infraestructura de verificación VI credential y write verification. `verify_result_hash()`, `verify_file_write()` implementados con tests.
+- [ ] **Integración VI Issuance:** El issuance de credentials VI aún no está conectado al flujo del agente. La verificación closed-loop espera credentials externos.
+- [ ] **Activación de Code Context (Milvus):** Indexar el codebase local para navegación semántica de símbolos Rust. Settings准备好了 en `~/.gemini/settings.json` — pendiente ejecutar indexación.
+- [ ] **Closed-Loop Verification para Writes:** `verify_file_write()` listo. Requiere integración en el loop del agente para llamarlo automáticamente post-ejecución de `file_write`.
 
-## 📅 Fase IV: Optimización Multi-Modelo y UI
+## 📅 Fase IV: Optimización Multi-Modelo y UI (Pendiente)
 - [ ] **Chain of Thought Routing:** Implementar en `classifier.rs` el enrutamiento para que modelos ligeros (Haiku) validen planes y modelos "Senior" (Sonnet/GPT4) ejecuten lógica compleja.
 - [ ] **Dashboard i18n:** Actualizar el Dashboard en React 19 para visualizar el estado del Hardware Sentinel y el progreso de DocSync.
+
+## 🔮 Fase V: Reflexión Autónoma (Borrador)
+- [ ] **Auto-Mejora Continua:** Zara analiza sus propios patrones de error y propone mejoras al código base.
+- [ ] **Learning Loop:** El `ReflectionEngine` retroalimenta al `SemanticToolSearch` para mejorar selección de herramientas basada en éxito/fracaso histórico.
 
 ---
 *Ultima actualización: Marzo 2026*
