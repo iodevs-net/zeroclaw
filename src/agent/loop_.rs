@@ -11,6 +11,7 @@ use crate::providers::{
 };
 use crate::runtime;
 use crate::security::{AutonomyLevel, SecurityPolicy};
+use crate::agent::closed_loop_verifier::verify_write_operation;
 use crate::tools::{self, compute_result_hash, Tool};
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
@@ -2117,6 +2118,7 @@ pub(crate) async fn agent_turn(
     dedup_exempt_tools: &[String],
     activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
     model_switch_callback: Option<ModelSwitchCallback>,
+    workspace_dir: std::path::PathBuf,
 ) -> Result<String> {
     run_tool_call_loop(
         provider,
@@ -2143,6 +2145,7 @@ pub(crate) async fn agent_turn(
         0,    // max_tool_result_chars: 0 = disabled (legacy callers)
         0,    // context_token_budget: 0 = disabled (legacy callers)
         None, // shared_budget: no shared budget for legacy callers
+        workspace_dir,
     )
     .await
 }
@@ -2281,6 +2284,7 @@ pub(crate) async fn run_tool_call_loop(
     max_tool_result_chars: usize,
     context_token_budget: usize,
     shared_budget: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    workspace_dir: std::path::PathBuf,
 ) -> Result<String> {
     let max_iterations = if max_tool_iterations == 0 {
         DEFAULT_MAX_TOOL_ITERATIONS
@@ -3197,6 +3201,27 @@ pub(crate) async fn run_tool_call_loop(
                     .await;
             }
 
+            // ── Closed-Loop Write Verification ───────────────
+            // Verify file_write and shell writes match expected content.
+            // Errors are logged but do not block the result — write verification
+            // is advisory-only for now.
+            if outcome.success {
+                let verification = verify_write_operation(
+                    &call.name,
+                    &call.arguments,
+                    &outcome.output,
+                    &outcome.result_hash,
+                    &workspace_dir,
+                );
+                if let Err(e) = verification {
+                    tracing::warn!(
+                        tool = %call.name,
+                        result_hash = %outcome.result_hash,
+                        "write verification failed (advisory): {e}"
+                    );
+                }
+            }
+
             // ── Progress: tool completion ───────────────────────
             if let Some(ref tx) = on_delta {
                 let secs = outcome.duration.as_secs();
@@ -3969,6 +3994,7 @@ pub async fn run(
                 config.agent.max_tool_result_chars,
                 config.agent.max_context_tokens,
                 None, // shared_budget
+                config.workspace_dir.clone(),
             )
             .await
             {
@@ -4275,6 +4301,7 @@ pub async fn run(
                     config.agent.max_tool_result_chars,
                     config.agent.max_context_tokens,
                     None, // shared_budget
+                    config.workspace_dir.clone(),
                 )
                 .await
                 {
@@ -4781,6 +4808,7 @@ pub async fn process_message(
         &config.agent.tool_call_dedup_exempt,
         activated_handle_pm.as_ref(),
         None,
+        config.workspace_dir.clone(),
     )
     .await
 }
@@ -5790,6 +5818,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("provider without vision support should fail");
@@ -5845,6 +5874,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("oversized payload must fail");
@@ -5894,6 +5924,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("valid multimodal payload should pass");
@@ -5942,6 +5973,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("should fail without vision_provider config");
@@ -5997,6 +6029,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("should fail when vision provider cannot be created");
@@ -6052,6 +6085,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("text-only messages should succeed with default provider");
@@ -6108,6 +6142,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("should fail due to nonexistent vision provider");
@@ -6162,6 +6197,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("empty image markers should not trigger vision routing");
@@ -6216,6 +6252,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect_err("should attempt vision provider creation for multiple images");
@@ -6353,6 +6390,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("parallel execution should complete");
@@ -6427,6 +6465,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("cron_add delivery defaults should be injected");
@@ -6493,6 +6532,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("explicit delivery mode should be preserved");
@@ -6554,6 +6594,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("loop should finish after deduplicating repeated calls");
@@ -6585,7 +6626,7 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let security = Arc::new(crate::security::SecurityPolicy {
             autonomy: crate::security::AutonomyLevel::Supervised,
-            workspace_dir: tmp.path().to_path_buf(),
+            workspace_dir: std::env::temp_dir(),
             ..crate::security::SecurityPolicy::default()
         });
         let runtime: Arc<dyn crate::runtime::RuntimeAdapter> =
@@ -6627,6 +6668,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("non-interactive shell should succeed for low-risk command");
@@ -6691,6 +6733,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("loop should finish with exempt tool executing twice");
@@ -6775,6 +6818,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("loop should complete");
@@ -6836,6 +6880,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("native fallback id flow should complete");
@@ -6921,6 +6966,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("native tool-call text should be relayed through on_delta");
@@ -6990,6 +7036,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("streaming provider should complete");
@@ -7061,6 +7108,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("streaming tool loop should execute tool and finish");
@@ -7136,6 +7184,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("native streaming events should preserve tool loop semantics");
@@ -7220,6 +7269,7 @@ mod tests {
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("routed streaming provider should complete");
@@ -7306,6 +7356,7 @@ mod tests {
                 &[],
                 Some(&activated),
                 None,
+                std::env::temp_dir(),
             )
             .await
             .expect("wrapper path should execute activated tools");
@@ -9233,6 +9284,7 @@ Let me check the result."#;
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("tool loop should complete");
@@ -9390,6 +9442,7 @@ Let me check the result."#;
                     0,
                     0,
                     None,
+                    workspace.path().to_path_buf(),
                 ),
             )
             .await
@@ -9472,6 +9525,7 @@ Let me check the result."#;
                     0,
                     0,
                     None,
+                    workspace.path().to_path_buf(),
                 ),
             )
             .await
@@ -9503,6 +9557,7 @@ Let me check the result."#;
             capabilities: ProviderCapabilities::default(),
         };
         let observer = NoopObserver;
+        let tmp = tempfile::TempDir::new().unwrap();
         let mut history = vec![ChatMessage::system("test"), ChatMessage::user("hello")];
 
         let result = run_tool_call_loop(
@@ -9530,6 +9585,7 @@ Let me check the result."#;
             0,
             0,
             None,
+            std::env::temp_dir(),
         )
         .await
         .expect("should succeed without cost scope");
