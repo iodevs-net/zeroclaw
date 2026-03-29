@@ -250,12 +250,12 @@ async fn e2e_live_minimax_vi_credential_issuance() {
     use zeroclaw::security::audit::AuditLogger;
     use std::sync::Arc;
 
-    // Set up audit logger with signing key
-    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
-        .map(|k| hex::decode(&k).ok())
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| vec![0u8; 32]);
+    // Set up signing key — must be set before AuditLogger::new with sign_events
+    let signing_key_hex = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .unwrap_or_else(|_| "0102030405060708091011121314151617181920212223242526272829303132".to_string());
+    let signing_key = hex::decode(&signing_key_hex).unwrap_or_else(|_| vec![0u8; 32]);
+    // SAFETY: test-only, single-threaded test runner
+    unsafe { std::env::set_var("ZEROCLAW_AUDIT_SIGNING_KEY", &signing_key_hex) };
 
     let tmp_dir = tempfile::TempDir::new().expect("temp dir");
     let audit_config = AuditConfig {
@@ -333,12 +333,12 @@ async fn e2e_live_minimax_vi_credential_full_verification() {
     use zeroclaw::security::audit::AuditLogger;
     use std::sync::Arc;
 
-    // Set up audit logger and issuer
-    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
-        .map(|k| hex::decode(&k).ok())
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| vec![0u8; 32]);
+    // Set up signing key — must be set before AuditLogger::new with sign_events
+    let signing_key_hex = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .unwrap_or_else(|_| "0102030405060708091011121314151617181920212223242526272829303132".to_string());
+    let signing_key = hex::decode(&signing_key_hex).unwrap_or_else(|_| vec![0u8; 32]);
+    // SAFETY: test-only, single-threaded test runner
+    unsafe { std::env::set_var("ZEROCLAW_AUDIT_SIGNING_KEY", &signing_key_hex) };
 
     let tmp_dir = tempfile::TempDir::new().expect("temp dir");
     let audit_config = AuditConfig {
