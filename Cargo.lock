@@ -12398,6 +12398,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shellexpand",
+ "syn 1.0.109",
  "tar",
  "tempfile",
  "thiserror 2.0.18",
