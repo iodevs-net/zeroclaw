@@ -38,6 +38,7 @@ pub mod cron_runs;
 pub mod cron_update;
 pub mod data_management;
 pub mod delegate;
+pub mod doc_sync;
 pub mod discord_search;
 pub mod escalate;
 pub mod file_edit;
@@ -213,6 +214,7 @@ pub use workspace_tool::WorkspaceTool;
 
 use crate::config::{Config, DelegateAgentConfig};
 use crate::memory::Memory;
+use crate::providers::Provider;
 use crate::runtime::{NativeRuntime, RuntimeAdapter};
 use crate::security::{SecurityPolicy, create_sandbox};
 use async_trait::async_trait;
@@ -347,6 +349,8 @@ pub fn all_tools(
     fallback_api_key: Option<&str>,
     root_config: &crate::config::Config,
     canvas_store: Option<CanvasStore>,
+    provider: Option<Arc<dyn Provider>>,
+    model: Option<String>,
 ) -> (
     Vec<Box<dyn Tool>>,
     Option<DelegateParentToolsHandle>,
@@ -370,6 +374,8 @@ pub fn all_tools(
         fallback_api_key,
         root_config,
         canvas_store,
+        provider,
+        model,
     )
 }
 
@@ -394,6 +400,8 @@ pub fn all_tools_with_runtime(
     fallback_api_key: Option<&str>,
     root_config: &crate::config::Config,
     canvas_store: Option<CanvasStore>,
+    provider: Option<Arc<dyn Provider>>,
+    model: Option<String>,
 ) -> (
     Vec<Box<dyn Tool>>,
     Option<DelegateParentToolsHandle>,
@@ -1045,6 +1053,14 @@ pub fn all_tools_with_runtime(
         )));
     }
 
+    if let (Some(p), Some(m)) = (provider, model) {
+        tool_arcs.push(Arc::new(doc_sync::DocSyncTool::new(
+            p,
+            m,
+            workspace_dir.to_path_buf(),
+        )));
+    }
+
     (
         boxed_registry_from_arcs(tool_arcs),
         delegate_handle,
@@ -1110,6 +1126,8 @@ mod tests {
             None,
             &cfg,
             None,
+            None,
+            None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(!names.contains(&"browser_open"));
@@ -1152,6 +1170,8 @@ mod tests {
             &HashMap::new(),
             None,
             &cfg,
+            None,
+            None,
             None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
@@ -1307,6 +1327,8 @@ mod tests {
             Some("delegate-test-credential"),
             &cfg,
             None,
+            None,
+            None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"delegate"));
@@ -1340,6 +1362,8 @@ mod tests {
             &HashMap::new(),
             None,
             &cfg,
+            None,
+            None,
             None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
@@ -1376,6 +1400,8 @@ mod tests {
             None,
             &cfg,
             None,
+            None,
+            None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"read_skill"));
@@ -1410,6 +1436,8 @@ mod tests {
             &HashMap::new(),
             None,
             &cfg,
+            None,
+            None,
             None,
         );
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
