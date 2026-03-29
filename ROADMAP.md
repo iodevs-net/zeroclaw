@@ -34,7 +34,7 @@ Transformar a Zara Claw en un orquestador de IA de alto rendimiento, autónomo, 
 - [x] **Endpoints REST VI:** `GET /api/vi/verify/:id` y `GET /api/vi/credentials` con auth bearer. Verificación HMAC-SHA256 de proof. Filtros por tool, channel y limit.
 - [x] **Tests Live VI Credential:** Sistema funcionando en daemon real. 2 credenciales emitidas para `web_search_tool` y `web_fetch` tras interacción real via Telegram. Verificación `verified: true`.
 - [x] **DID Document y Resolutor:** `src/agent/did.rs` con `DIDResolver` y `DIDDocument`. Soporta `did:zeroclaw:zara/<version>`. Endpoint `GET /api/did/:id` para resolución off-chain.
-- [ ] **Activación Code Context (Embedded):** Indexación semántica del codebase usando syn + BM25 embedded (alternativa a Milvus, alignment con philosophy low-memory).
+- [x] **Activación Code Context (Embedded):** `CodeNavigateTool` implementada en `src/tools/code_indexer.rs`. Parser AST con `syn`, índice en memoria con scoring BM25-like, `Tool` trait registrado en `mod.rs`. 3/3 tests unitarios passing.
 
 ## 📅 Fase IV: Optimización Multi-Modelo y UI (Pendiente)
 - [ ] **Chain of Thought Routing:** Implementar en `classifier.rs` el enrutamiento para que modelos ligeros (Haiku) validen planes y modelos "Senior" (Sonnet/GPT4) ejecuten lógica compleja.

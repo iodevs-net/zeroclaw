@@ -22,6 +22,7 @@ pub mod browser_delegate;
 pub mod browser_open;
 pub mod calculator;
 pub mod canvas;
+pub mod code_indexer;
 pub mod claude_code;
 pub mod claude_code_runner;
 pub mod cli_discovery;
@@ -121,6 +122,7 @@ pub use browser_delegate::{BrowserDelegateConfig, BrowserDelegateTool};
 pub use browser_open::BrowserOpenTool;
 pub use calculator::CalculatorTool;
 pub use canvas::{CanvasStore, CanvasTool};
+pub use code_indexer::CodeNavigateTool;
 pub use claude_code::ClaudeCodeTool;
 pub use claude_code_runner::ClaudeCodeRunnerTool;
 pub use cloud_ops::CloudOpsTool;
@@ -449,6 +451,7 @@ pub fn all_tools_with_runtime(
             workspace_dir.to_path_buf(),
         )),
         Arc::new(CalculatorTool::new()),
+        Arc::new(CodeNavigateTool::new(workspace_dir.to_path_buf())),
         Arc::new(WeatherTool::new()),
         Arc::new(CanvasTool::new(canvas_store.unwrap_or_default())),
     ];

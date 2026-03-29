@@ -136,6 +136,9 @@ prost = { version = "0.14", default-features = false, features = ["derive"], opt
 # Memory / persistence
 rusqlite = { version = "0.37", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+
+# Rust code parsing for Code Context
+syn = { version = "1.0", features = ["full", "parsing", "printing", "extra-traits"] }
 chrono-tz = "0.10"
 cron = "0.15"
 
