@@ -205,7 +205,7 @@ pub use text_browser::TextBrowserTool;
 pub use tool_search::ToolSearchTool;
 pub use traits::Tool;
 #[allow(unused_imports)]
-pub use traits::{ToolResult, ToolSpec};
+pub use traits::{ToolResult, ToolSpec, compute_result_hash};
 pub use verifiable_intent::VerifiableIntentTool;
 pub use weather_tool::WeatherTool;
 pub use web_fetch::WebFetchTool;

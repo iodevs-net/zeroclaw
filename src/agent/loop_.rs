@@ -11,7 +11,7 @@ use crate::providers::{
 };
 use crate::runtime;
 use crate::security::{AutonomyLevel, SecurityPolicy};
-use crate::tools::{self, Tool};
+use crate::tools::{self, compute_result_hash, Tool};
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use futures_util::StreamExt;
@@ -2964,10 +2964,11 @@ pub(crate) async fn run_tool_call_loop(
                             call.name.clone(),
                             call.tool_call_id.clone(),
                             ToolExecutionOutcome {
-                                output: cancelled,
+                                output: cancelled.clone(),
                                 success: false,
                                 error_reason: Some(scrub_credentials(&reason)),
                                 duration: Duration::ZERO,
+                                result_hash: compute_result_hash(false, &cancelled, Some(&scrub_credentials(&reason))),
                             },
                         ));
                         continue;
@@ -3035,8 +3036,9 @@ pub(crate) async fn run_tool_call_loop(
                             ToolExecutionOutcome {
                                 output: denied.clone(),
                                 success: false,
-                                error_reason: Some(denied),
+                                error_reason: Some(denied.clone()),
                                 duration: Duration::ZERO,
+                                result_hash: compute_result_hash(false, &denied, Some(&denied)),
                             },
                         ));
                         continue;
@@ -3084,8 +3086,9 @@ pub(crate) async fn run_tool_call_loop(
                     ToolExecutionOutcome {
                         output: duplicate.clone(),
                         success: false,
-                        error_reason: Some(duplicate),
+                        error_reason: Some(duplicate.clone()),
                         duration: Duration::ZERO,
+                        result_hash: compute_result_hash(false, &duplicate, Some(&duplicate)),
                     },
                 ));
                 continue;

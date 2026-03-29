@@ -1,5 +1,23 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+/// Compute a deterministic fingerprint of a tool result.
+///
+/// This is used for closed-loop verification: the result hash captures
+/// the exact output/error state so it can be compared against a
+/// verifiable intent credential or logged to an tamper-evident audit trail.
+pub fn compute_result_hash(success: bool, output: &str, error: Option<&str>) -> String {
+    // Canonical representation: success flag, then output, then error (or empty)
+    let error_str = error.unwrap_or("");
+    let canonical = serde_json::json!({
+        "success": success,
+        "output": output,
+        "error": error_str,
+    });
+    let bytes = serde_json::to_vec(&canonical).unwrap_or_default();
+    hex::encode(Sha256::digest(&bytes))
+}
 
 /// Result of a tool execution
 #[derive(Debug, Clone, Serialize, Deserialize)]

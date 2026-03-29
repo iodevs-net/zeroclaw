@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::approval::ApprovalManager;
 use crate::observability::{Observer, ObserverEvent};
+use crate::tools::compute_result_hash;
 use crate::tools::Tool;
 use crate::util::truncate_with_ellipsis;
 
@@ -30,6 +31,9 @@ pub(crate) struct ToolExecutionOutcome {
     pub(crate) success: bool,
     pub(crate) error_reason: Option<String>,
     pub(crate) duration: Duration,
+    /// SHA-256 fingerprint of (success, output, error_reason).
+    /// Used for audit logging and closed-loop verification.
+    pub(crate) result_hash: String,
 }
 
 // ── Single tool execution ────────────────────────────────────────────────
@@ -58,6 +62,8 @@ pub(crate) async fn execute_one_tool(
     let Some(tool) = static_tool.or(activated_arc.as_deref()) else {
         let reason = format!("Unknown tool: {call_name}");
         let duration = start.elapsed();
+        let error_reason = Some(scrub_credentials(&reason));
+        let result_hash = compute_result_hash(false, &reason, error_reason.as_deref());
         observer.record_event(&ObserverEvent::ToolCall {
             tool: call_name.to_string(),
             duration,
@@ -66,8 +72,9 @@ pub(crate) async fn execute_one_tool(
         return Ok(ToolExecutionOutcome {
             output: reason.clone(),
             success: false,
-            error_reason: Some(scrub_credentials(&reason)),
+            error_reason,
             duration,
+            result_hash,
         });
     };
 
@@ -89,20 +96,26 @@ pub(crate) async fn execute_one_tool(
                 duration,
                 success: r.success,
             });
+            let error_reason = r.error.as_deref();
+            let result_hash = compute_result_hash(r.success, &r.output, error_reason);
             if r.success {
                 Ok(ToolExecutionOutcome {
                     output: scrub_credentials(&r.output),
                     success: true,
                     error_reason: None,
                     duration,
+                    result_hash,
                 })
             } else {
                 let reason = r.error.unwrap_or(r.output);
+                let error_reason = Some(scrub_credentials(&reason));
+                let result_hash = compute_result_hash(false, &format!("Error: {reason}"), error_reason.as_deref());
                 Ok(ToolExecutionOutcome {
                     output: format!("Error: {reason}"),
                     success: false,
-                    error_reason: Some(scrub_credentials(&reason)),
+                    error_reason,
                     duration,
+                    result_hash,
                 })
             }
         }
@@ -114,11 +127,14 @@ pub(crate) async fn execute_one_tool(
                 success: false,
             });
             let reason = format!("Error executing {call_name}: {e}");
+            let error_reason = Some(scrub_credentials(&reason));
+            let result_hash = compute_result_hash(false, &reason, error_reason.as_deref());
             Ok(ToolExecutionOutcome {
                 output: reason.clone(),
                 success: false,
-                error_reason: Some(scrub_credentials(&reason)),
+                error_reason,
                 duration,
+                result_hash,
             })
         }
     }
