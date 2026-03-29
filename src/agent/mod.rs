@@ -1,6 +1,7 @@
 #[allow(clippy::module_inception)]
 pub mod agent;
 pub mod classifier;
+pub mod closed_loop_verifier;
 pub mod context_analyzer;
 pub mod context_compressor;
 pub mod cost;
