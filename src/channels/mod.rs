@@ -5467,12 +5467,25 @@ pub async fn start_channels(config: Config) -> Result<()> {
                         .flatten()
                         .unwrap_or_else(Vec::new);
 
-                    let vi_hook = crate::hooks::builtin::ViCredentialHook::new(
-                        env!("CARGO_PKG_VERSION"),
-                        std::sync::Arc::clone(logger),
-                        signing_key,
-                    );
-                    runner.register(Box::new(vi_hook));
+                    // Open the persistent credential store
+                    let vi_store = match crate::agent::vi_issuer::ViCredentialStore::open(&zeroclaw_dir) {
+                        Ok(store) => Some(std::sync::Arc::new(store)),
+                        Err(e) => {
+                            tracing::warn!(hook = "vi-credential", "credential store open failed: {e}");
+                            None
+                        }
+                    };
+
+                    if let Some(ref store) = vi_store {
+                        let vi_hook = crate::hooks::builtin::ViCredentialHook::new(
+                            env!("CARGO_PKG_VERSION"),
+                            std::sync::Arc::clone(logger),
+                            signing_key,
+                            std::sync::Arc::clone(store),
+                            "channel".to_string(),
+                        );
+                        runner.register(Box::new(vi_hook));
+                    }
                 }
 
                 let hook = audit_logger
