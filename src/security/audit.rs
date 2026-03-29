@@ -352,6 +352,13 @@ impl AuditLogger {
         })
     }
 
+    /// Returns the entry hash of the most recently logged event.
+    /// Used by VI credential issuer to anchor proofs to the audit chain.
+    pub fn get_last_entry_hash(&self) -> String {
+        let state = self.chain.lock();
+        state.prev_hash.clone()
+    }
+
     /// Rotate log if it exceeds max size
     fn rotate_if_needed(&self) -> Result<()> {
         if let Ok(metadata) = std::fs::metadata(&self.log_path) {

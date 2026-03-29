@@ -233,3 +233,179 @@ async fn e2e_live_minimax_vi_credential_mismatch() {
         }
     }
 }
+
+/// Verifies that `ViIssuer::issue()` produces a valid W3C VC-style credential
+/// with correct fields after a real MiniMax API call.
+///
+/// The credential includes:
+/// - issuer DID (did:zeroclaw:zara/<version>)
+/// - result_hash (SHA-256 of the tool output)
+/// - audit_chain_hash (Merkle chain head at time of issuance)
+/// - HMAC proof over the credential subject
+#[tokio::test]
+#[ignore = "requires MiniMax API key in ~/.zeroclaw/config.toml"]
+async fn e2e_live_minimax_vi_credential_issuance() {
+    use zeroclaw::agent::vi_issuer::ViIssuer;
+    use zeroclaw::config::AuditConfig;
+    use zeroclaw::security::audit::AuditLogger;
+    use std::sync::Arc;
+
+    // Set up audit logger with signing key
+    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .map(|k| hex::decode(&k).ok())
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| vec![0u8; 32]);
+
+    let tmp_dir = tempfile::TempDir::new().expect("temp dir");
+    let audit_config = AuditConfig {
+        enabled: true,
+        sign_events: true,
+        ..Default::default()
+    };
+    let audit_logger = Arc::new(
+        AuditLogger::new(audit_config, tmp_dir.path().to_path_buf())
+            .expect("audit logger init failed"),
+    );
+
+    // Create VI issuer
+    let issuer = ViIssuer::new(
+        env!("CARGO_PKG_VERSION"),
+        Arc::clone(&audit_logger),
+        signing_key,
+    );
+
+    // Issue a credential for a simulated tool execution using MiniMax API response
+    let api_key = load_api_key_for_tests()
+        .await
+        .expect("Failed to load API key from config");
+    let provider = zeroclaw::providers::anthropic::AnthropicProvider::with_base_url(
+        Some(&api_key),
+        Some("https://api.minimax.io/anthropic"),
+    );
+
+    let messages = vec![
+        ChatMessage::system("Reply with exactly three words: alpha beta gamma"),
+        ChatMessage::user("Reply with exactly three words: alpha beta gamma"),
+    ];
+
+    let response = provider
+        .chat_with_history(&messages, "MiniMax-M2.7-highspeed", 0.0)
+        .await
+        .expect("MiniMax API call failed");
+
+    let result_hash = zeroclaw::tools::compute_result_hash(true, &response, None);
+    let cred = issuer.issue(
+        "mini_max_chat",
+        &result_hash,
+        true,
+        &response,
+        None,
+        "test",
+    );
+
+    // Verify credential structure
+    assert!(cred.id.starts_with("urn:zeroclaw:vi:"));
+    assert!(cred.issuer.contains("did:zeroclaw:zara"));
+    assert_eq!(cred.credential_subject.tool_name, "mini_max_chat");
+    assert_eq!(cred.credential_subject.result_hash, result_hash);
+    assert_eq!(cred.credential_subject.success, true);
+    assert!(cred.credential_subject.output_digest.len() == 64); // SHA-256 hex
+    assert!(cred.credential_subject.audit_chain_hash.len() == 64);
+    assert!(cred.proof.proof_value.starts_with("hmac-sha256:"));
+    assert!(cred.proof.proof_type == "HMAC2024");
+
+    println!("[VI] Credential issued: {}", cred.id);
+    println!("[VI] Issuer: {}", cred.issuer);
+    println!("[VI] Tool: {}", cred.credential_subject.tool_name);
+    println!("[VI] Result hash: {}...", &cred.credential_subject.result_hash[..16]);
+    println!("[VI] Audit chain: {}...", &cred.credential_subject.audit_chain_hash[..16]);
+    println!("[VI] Proof: {}...", &cred.proof.proof_value[12..28]);
+}
+
+/// Verifies that `ViIssuer::verify()` correctly validates a credential's HMAC
+/// proof and detects tampering.
+#[tokio::test]
+#[ignore = "requires MiniMax API key in ~/.zeroclaw/config.toml"]
+async fn e2e_live_minimax_vi_credential_full_verification() {
+    use zeroclaw::agent::vi_issuer::ViIssuer;
+    use zeroclaw::config::AuditConfig;
+    use zeroclaw::security::audit::AuditLogger;
+    use std::sync::Arc;
+
+    // Set up audit logger and issuer
+    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+        .map(|k| hex::decode(&k).ok())
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| vec![0u8; 32]);
+
+    let tmp_dir = tempfile::TempDir::new().expect("temp dir");
+    let audit_config = AuditConfig {
+        enabled: true,
+        sign_events: true,
+        ..Default::default()
+    };
+    let audit_logger = Arc::new(
+        AuditLogger::new(audit_config, tmp_dir.path().to_path_buf())
+            .expect("audit logger init failed"),
+    );
+
+    let issuer = ViIssuer::new(
+        env!("CARGO_PKG_VERSION"),
+        Arc::clone(&audit_logger),
+        signing_key.clone(),
+    );
+
+    // Issue a credential based on a real MiniMax API response
+    let api_key = load_api_key_for_tests()
+        .await
+        .expect("Failed to load API key from config");
+    let provider = zeroclaw::providers::anthropic::AnthropicProvider::with_base_url(
+        Some(&api_key),
+        Some("https://api.minimax.io/anthropic"),
+    );
+
+    let messages = vec![
+        ChatMessage::system("Reply with exactly two words: hello world"),
+        ChatMessage::user("Reply with exactly two words: hello world"),
+    ];
+
+    let response = provider
+        .chat_with_history(&messages, "MiniMax-M2.7-highspeed", 0.0)
+        .await
+        .expect("MiniMax API call failed");
+
+    let result_hash = zeroclaw::tools::compute_result_hash(true, &response, None);
+    let cred = issuer.issue(
+        "mini_max_chat",
+        &result_hash,
+        true,
+        &response,
+        None,
+        "test",
+    );
+
+    // Verify the credential — should pass
+    issuer.verify(&cred).expect("Credential verification should succeed");
+
+    // Tamper with the credential — verify should fail
+    let mut tampered = cred.clone();
+    tampered.credential_subject.success = false;
+    tampered.credential_subject.result_hash = result_hash.clone();
+    let tampered_result = issuer.verify(&tampered);
+    assert!(tampered_result.is_err(), "Tampered credential should fail verification");
+
+    // Verify with wrong key — should fail
+    let wrong_key_issuer = ViIssuer::new(
+        env!("CARGO_PKG_VERSION"),
+        Arc::clone(&audit_logger),
+        vec![1u8; 32], // different key
+    );
+    let wrong_key_result = wrong_key_issuer.verify(&cred);
+    assert!(wrong_key_result.is_err(), "Credential signed with wrong key should fail verification");
+
+    println!("[VI] Full verification PASSED — credential is valid and tamper-resistant");
+    println!("[VI] Tampering correctly detected: {}", tampered_result.unwrap_err());
+    println!("[VI] Wrong key correctly rejected: {}", wrong_key_result.unwrap_err());
+}

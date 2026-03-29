@@ -5163,7 +5163,7 @@ impl Default for HooksConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BuiltinHooksConfig {
     /// Enable the command-logger hook (logs tool calls for auditing).
     pub command_logger: bool,
@@ -5173,6 +5173,15 @@ pub struct BuiltinHooksConfig {
     /// that matches one of `tool_patterns`.
     #[serde(default)]
     pub webhook_audit: WebhookAuditConfig,
+}
+
+impl Default for BuiltinHooksConfig {
+    fn default() -> Self {
+        Self {
+            command_logger: true,
+            webhook_audit: WebhookAuditConfig::default(),
+        }
+    }
 }
 
 /// Configuration for the webhook-audit builtin hook.

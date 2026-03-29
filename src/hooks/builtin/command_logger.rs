@@ -14,7 +14,8 @@ use crate::tools::traits::ToolResult;
 /// - The persistent Merkle-hash chained audit log (via `AuditLogger`)
 pub struct CommandLoggerHook {
     log: Arc<Mutex<Vec<String>>>,
-    audit: Option<AuditLogger>,
+    /// Shared audit logger — allows VI issuer to share the same chain state.
+    audit: Option<Arc<AuditLogger>>,
     channel: String,
 }
 
@@ -28,12 +29,31 @@ impl CommandLoggerHook {
         zeroclaw_dir: std::path::PathBuf,
         channel: String,
     ) -> Self {
-        let audit = AuditLogger::new(audit_config, zeroclaw_dir).ok();
+        let audit = AuditLogger::new(audit_config, zeroclaw_dir)
+            .ok()
+            .map(Arc::new);
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
             audit,
             channel,
         }
+    }
+
+    /// Create a hook with a pre-built shared audit logger.
+    ///
+    /// Use this when you need to share the same `AuditLogger` instance with
+    /// other components (e.g. `ViIssuer`).
+    pub fn with_logger(logger: Arc<AuditLogger>, channel: String) -> Self {
+        Self {
+            log: Arc::new(Mutex::new(Vec::new())),
+            audit: Some(logger),
+            channel,
+        }
+    }
+
+    /// Returns a reference to the shared audit logger, if one is configured.
+    pub fn audit_logger(&self) -> Option<&Arc<AuditLogger>> {
+        self.audit.as_ref()
     }
 
     #[cfg(test)]

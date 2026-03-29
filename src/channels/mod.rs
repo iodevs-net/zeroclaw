@@ -5446,11 +5446,50 @@ pub async fn start_channels(config: Config) -> Result<()> {
                             std::env::var("ZEROCLAW_DIR").unwrap_or_else(|_| "~/.zeroclaw".into()),
                         )
                     });
-                let hook = crate::hooks::builtin::CommandLoggerHook::new(
+
+                // Create AuditLogger once and share between CommandLoggerHook and ViCredentialHook
+                // so that VI credential proofs reference the same audit chain head.
+                let audit_logger = match crate::security::audit::AuditLogger::new(
                     config.security.audit.clone(),
-                    zeroclaw_dir,
-                    "channel".to_string(),
-                );
+                    zeroclaw_dir.clone(),
+                ) {
+                    Ok(logger) => Some(std::sync::Arc::new(logger)),
+                    Err(e) => {
+                        tracing::warn!(hook = "command-logger", "audit logger init failed: {e}");
+                        None
+                    }
+                };
+
+                if let Some(ref logger) = audit_logger {
+                    let signing_key = std::env::var("ZEROCLAW_AUDIT_SIGNING_KEY")
+                        .ok()
+                        .map(|k| hex::decode(&k).ok())
+                        .flatten()
+                        .unwrap_or_else(Vec::new);
+
+                    let vi_hook = crate::hooks::builtin::ViCredentialHook::new(
+                        env!("CARGO_PKG_VERSION"),
+                        std::sync::Arc::clone(logger),
+                        signing_key,
+                    );
+                    runner.register(Box::new(vi_hook));
+                }
+
+                let hook = audit_logger
+                    .as_ref()
+                    .map(|logger| {
+                        crate::hooks::builtin::CommandLoggerHook::with_logger(
+                            std::sync::Arc::clone(logger),
+                            "channel".to_string(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        crate::hooks::builtin::CommandLoggerHook::new(
+                            config.security.audit.clone(),
+                            zeroclaw_dir,
+                            "channel".to_string(),
+                        )
+                    });
                 runner.register(Box::new(hook));
             }
             if config.hooks.builtin.webhook_audit.enabled {
