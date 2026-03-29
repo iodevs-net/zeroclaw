@@ -2,6 +2,8 @@ pub mod schema;
 pub mod traits;
 pub mod workspace;
 
+use anyhow::Context;
+
 #[allow(unused_imports)]
 pub use schema::{
     AgentConfig, AssemblyAiSttConfig, AuditConfig, AutonomyConfig, BackupConfig,
@@ -38,6 +40,21 @@ pub use schema::{
 
 pub fn name_and_presence<T: traits::ChannelConfig>(channel: Option<&T>) -> (&'static str, bool) {
     (T::name(), channel.is_some())
+}
+
+/// Load and decrypt the API key from the active ZeroClaw config.
+///
+/// This is intended for live integration tests that make real API calls.
+/// Returns the decrypted API key from `~/.zeroclaw/config.toml` (or the
+/// path in `ZEROCLAW_CONFIG_DIR`).
+///
+/// # Errors
+/// Returns an error if config loading fails or no API key is configured.
+pub async fn load_api_key_for_tests() -> anyhow::Result<String> {
+    let config = Config::load_or_init().await?;
+    config
+        .api_key
+        .context("No api_key found in config — set one in ~/.zeroclaw/config.toml")
 }
 
 #[cfg(test)]
