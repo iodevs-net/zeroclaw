@@ -280,7 +280,7 @@ fn build_agent_with(
     dispatcher: Box<dyn ToolDispatcher>,
 ) -> Agent {
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
@@ -297,7 +297,7 @@ fn build_agent_with_memory(
     auto_save: bool,
 ) -> Agent {
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(mem)
         .observer(make_observer())
@@ -314,7 +314,7 @@ fn build_agent_with_config(
     config: AgentConfig,
 ) -> Agent {
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())

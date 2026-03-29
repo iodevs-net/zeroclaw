@@ -50,7 +50,7 @@ pub fn tool_response(calls: Vec<ToolCall>) -> ChatResponse {
 /// Build an agent with `NativeToolDispatcher`.
 pub fn build_agent(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent {
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
@@ -63,7 +63,7 @@ pub fn build_agent(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Ag
 /// Build an agent with `XmlToolDispatcher`.
 pub fn build_agent_xml(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent {
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
@@ -80,7 +80,7 @@ pub fn build_recording_agent(
     memory_loader: Option<Box<dyn MemoryLoader>>,
 ) -> Agent {
     let mut builder = Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
@@ -106,7 +106,7 @@ pub fn build_agent_with_sqlite_memory(
     };
     let mem = Arc::from(memory::create_memory(&cfg, temp_dir, None).unwrap());
     Agent::builder()
-        .provider(provider)
+        .provider(Arc::from(provider))
         .tools(tools)
         .memory(mem)
         .observer(make_observer())

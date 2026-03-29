@@ -3,6 +3,8 @@ use crate::agent::dispatcher::{
 };
 use crate::agent::memory_loader::{DefaultMemoryLoader, MemoryLoader};
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
+use crate::agent::reflection::ReflectionEngine;
+use crate::agent::tool_search::SemanticToolSearch;
 use crate::config::Config;
 use crate::i18n::ToolDescriptions;
 use crate::memory::{self, Memory, MemoryCategory};
@@ -38,7 +40,7 @@ pub enum TurnEvent {
 }
 
 pub struct Agent {
-    provider: Box<dyn Provider>,
+    provider: Arc<dyn Provider>,
     tools: Vec<Box<dyn Tool>>,
     tool_specs: Vec<ToolSpec>,
     memory: Arc<dyn Memory>,
@@ -71,10 +73,12 @@ pub struct Agent {
     /// When MCP deferred loading is enabled, tools are activated via `tool_search`
     /// and stored here for lookup during tool execution.
     activated_tools: Option<Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    tool_search: Option<SemanticToolSearch>,
+    reflection_engine: Option<ReflectionEngine>,
 }
 
 pub struct AgentBuilder {
-    provider: Option<Box<dyn Provider>>,
+    provider: Option<Arc<dyn Provider>>,
     tools: Option<Vec<Box<dyn Tool>>>,
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
@@ -99,6 +103,8 @@ pub struct AgentBuilder {
     security_summary: Option<String>,
     autonomy_level: Option<crate::security::AutonomyLevel>,
     activated_tools: Option<Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    tool_search: Option<SemanticToolSearch>,
+    reflection_engine: Option<ReflectionEngine>,
 }
 
 impl AgentBuilder {
@@ -129,10 +135,12 @@ impl AgentBuilder {
             security_summary: None,
             autonomy_level: None,
             activated_tools: None,
+            tool_search: None,
+            reflection_engine: None,
         }
     }
 
-    pub fn provider(mut self, provider: Box<dyn Provider>) -> Self {
+    pub fn provider(mut self, provider: Arc<dyn Provider>) -> Self {
         self.provider = Some(provider);
         self
     }
@@ -263,9 +271,19 @@ impl AgentBuilder {
 
     pub fn activated_tools(
         mut self,
-        activated: Option<Arc<std::sync::Mutex<tools::ActivatedToolSet>>>,
+        activated: Option<Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
     ) -> Self {
         self.activated_tools = activated;
+        self
+    }
+
+    pub fn tool_search(mut self, tool_search: SemanticToolSearch) -> Self {
+        self.tool_search = Some(tool_search);
+        self
+    }
+
+    pub fn reflection_engine(mut self, reflection_engine: ReflectionEngine) -> Self {
+        self.reflection_engine = Some(reflection_engine);
         self
     }
 
@@ -325,6 +343,8 @@ impl AgentBuilder {
                 .autonomy_level
                 .unwrap_or(crate::security::AutonomyLevel::Supervised),
             activated_tools: self.activated_tools,
+            tool_search: self.tool_search,
+            reflection_engine: self.reflection_engine,
         })
     }
 }
@@ -528,7 +548,7 @@ impl Agent {
         };
 
         Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(tools)
             .memory(memory)
             .observer(observer)
@@ -591,7 +611,7 @@ impl Agent {
         let ctx = PromptContext {
             workspace_dir: &self.workspace_dir,
             model_name: &self.model_name,
-            tools: &self.tools,
+            tools: self.tools.iter().map(|t| t.as_ref()).collect(),
             skills: &self.skills,
             skills_prompt_mode: self.skills_prompt_mode,
             identity_config: Some(&self.identity_config),
@@ -1382,7 +1402,7 @@ mod tests {
 
     #[tokio::test]
     async fn turn_without_tools_returns_text() {
-        let provider = Box::new(MockProvider {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider {
             responses: Mutex::new(vec![crate::providers::ChatResponse {
                 text: Some("hello".into()),
                 tool_calls: vec![],
@@ -1402,7 +1422,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let mut agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1417,7 +1437,7 @@ mod tests {
 
     #[tokio::test]
     async fn turn_with_native_dispatcher_handles_tool_results_variant() {
-        let provider = Box::new(MockProvider {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider {
             responses: Mutex::new(vec![
                 crate::providers::ChatResponse {
                     text: Some(String::new()),
@@ -1449,7 +1469,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let mut agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1471,7 +1491,7 @@ mod tests {
     #[tokio::test]
     async fn turn_routes_with_hint_when_query_classification_matches() {
         let seen_models = Arc::new(Mutex::new(Vec::new()));
-        let provider = Box::new(ModelCaptureProvider {
+        let provider: Arc<dyn Provider> = Arc::new(ModelCaptureProvider {
             responses: Mutex::new(vec![crate::providers::ChatResponse {
                 text: Some("classified".into()),
                 tool_calls: vec![],
@@ -1494,7 +1514,7 @@ mod tests {
         let mut route_model_by_hint = HashMap::new();
         route_model_by_hint.insert("fast".to_string(), "anthropic/claude-haiku-4-5".to_string());
         let mut agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1612,7 +1632,7 @@ mod tests {
 
     #[test]
     fn builder_allowed_tools_none_keeps_all_tools() {
-        let provider = Box::new(MockProvider {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider {
             responses: Mutex::new(vec![]),
         });
 
@@ -1627,7 +1647,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1643,7 +1663,7 @@ mod tests {
 
     #[test]
     fn builder_allowed_tools_some_filters_tools() {
-        let provider = Box::new(MockProvider {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider {
             responses: Mutex::new(vec![]),
         });
 
@@ -1658,7 +1678,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1676,7 +1696,7 @@ mod tests {
 
     #[test]
     fn seed_history_prepends_system_and_skips_system_from_seed() {
-        let provider = Box::new(MockProvider {
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider {
             responses: Mutex::new(vec![]),
         });
 
@@ -1691,7 +1711,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let mut agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
@@ -1820,7 +1840,7 @@ mod tests {
     #[tokio::test]
     async fn turn_streamed_passes_tool_specs_to_provider() {
         let tools_received = Arc::new(Mutex::new(Vec::new()));
-        let provider = Box::new(StreamToolCaptureProvider {
+        let provider: Arc<dyn Provider> = Arc::new(StreamToolCaptureProvider {
             tools_received: tools_received.clone(),
             call_count: Arc::new(Mutex::new(0)),
         });
@@ -1836,7 +1856,7 @@ mod tests {
 
         let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
         let mut agent = Agent::builder()
-            .provider(provider)
+            .provider(provider.into())
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)

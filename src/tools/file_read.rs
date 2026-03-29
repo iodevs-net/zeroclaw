@@ -825,7 +825,7 @@ mod tests {
         ]);
 
         let mut agent = Agent::builder()
-            .provider(Box::new(provider) as Box<dyn Provider>)
+            .provider(Arc::new(provider) as Arc<dyn Provider>)
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
@@ -917,7 +917,7 @@ mod tests {
         ]);
 
         let mut agent = Agent::builder()
-            .provider(Box::new(provider) as Box<dyn Provider>)
+            .provider(Arc::new(provider) as Arc<dyn Provider>)
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
@@ -1000,7 +1000,7 @@ mod tests {
             .expect("provider should initialize");
 
         let mut agent = Agent::builder()
-            .provider(Box::new(provider) as Box<dyn Provider>)
+            .provider(Arc::new(provider) as Arc<dyn Provider>)
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
